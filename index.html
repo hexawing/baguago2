@@ -1,0 +1,1163 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <title>八卦围棋 Demo</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            padding: 20px;
+            background-color: #f0e6d2;
+            color: #3a3a3a;
+        }
+        #game-container {
+            display: flex;
+            gap: 30px;
+        }
+        #board-container {
+            position: relative;
+            width: 840px;
+            height: 760px;
+            background-color: #d1b790;
+            padding: 40px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            border: 2px solid #5a4a3b;
+        }
+        canvas {
+            position: absolute;
+            top: 40px;
+            left: 40px;
+            background-color: transparent;
+        }
+        #board-canvas { z-index: 1; }
+        #stone-canvas { z-index: 2; }
+        #hover-canvas { z-index: 3; }
+        
+        #controls-panel {
+            width: 300px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .control-section {
+            background-color: #fdfaf3;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        .control-section h2 {
+            margin-top: 0;
+            border-bottom: 2px solid #d1b790;
+            padding-bottom: 10px;
+            font-size: 1.5em;
+        }
+        .player-info {
+            font-size: 1.2em;
+            padding: 10px;
+            border-radius: 5px;
+            transition: all 0.3s;
+        }
+        .player-info.active {
+            background-color: #4CAF50;
+            color: white;
+            font-weight: bold;
+        }
+        #status-text {
+            font-size: 1.1em;
+            font-weight: bold;
+            color: #c0392b;
+            min-height: 25px;
+        }
+        button {
+            width: 100%;
+            padding: 12px;
+            font-size: 1.1em;
+            cursor: pointer;
+            border: none;
+            border-radius: 5px;
+            background-color: #8b6b4c;
+            color: white;
+            transition: background-color 0.2s;
+        }
+        button:hover {
+            background-color: #6a523a;
+        }
+        .trigram-legend {
+            list-style: none;
+            padding: 0;
+            font-size: 0.9em;
+        }
+        .trigram-legend li {
+            margin-bottom: 5px;
+        }
+        select {
+            width: 100%;
+            padding: 8px;
+            font-size: 1em;
+            border-radius: 5px;
+            border: 1px solid #8b6b4c;
+            background-color: #fff;
+            cursor: pointer;
+        }
+        select:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            background-color: #e8e2d6;
+        }
+        /* 新增：修复图例Canvas样式，防止它跑到左上角覆盖棋盘 */
+        #legend-canvas {
+            position: relative !important; /* 覆盖全局的 absolute */
+            top: 0 !important;
+            left: 0 !important;
+            background-color: #fdfaf3; /* 给个背景，防止透明重叠 */
+        }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <div id="board-container">
+        <canvas id="board-canvas" width="760" height="760"></canvas>
+        <canvas id="stone-canvas" width="760" height="760"></canvas>
+        <canvas id="hover-canvas" width="760" height="760"></canvas>
+    </div>
+
+    <div id="controls-panel">
+        <div class="control-section">
+            <h2>对局状态</h2>
+            <div id="player-black" class="player-info">黑方 提子: <span id="black-captures">0</span></div>
+            <div id="player-white" class="player-info">白方 提子: <span id="white-captures">0</span></div>
+            <p id="status-text"></p>
+        </div>
+        
+        <div class="control-section">
+            <h2>操作</h2>
+            <button id="pass-btn">停一手 (Pass)</button>
+            <br><br>
+            <button id="new-game-btn">新对局</button>
+        </div>
+
+        <div class="control-section">
+            <h2>对战设置</h2>
+            <label>棋盘:
+                <select id="size-select">
+                    <option value="9">9 路</option>
+                    <option value="13">13 路</option>
+                    <option value="19" selected>19 路</option>
+                </select>
+            </label>
+            <br><br>
+            <label>模式:
+                <select id="mode-select">
+                    <option value="pvp">双人对战</option>
+                    <option value="pve-black">人机 (你执黑)</option>
+                    <option value="pve-white">人机 (你执白)</option>
+                </select>
+            </label>
+            <br><br>
+            <label>难度:
+                <select id="difficulty-select">
+                    <option value="easy">简单</option>
+                    <option value="normal" selected>普通</option>
+                    <option value="hard">困难</option>
+                </select>
+            </label>
+            <br><br>
+            <label>贴目:
+                <select id="komi-select">
+                    <option value="0">0</option>
+                    <option value="0.5">0.5</option>
+                    <option value="4.5">4.5</option>
+                    <option value="5.5">5.5</option>
+                    <option value="6.5" selected>6.5</option>
+                    <option value="7.5">7.5</option>
+                </select>
+            </label>
+            <br><br>
+            <label><input type="checkbox" id="numbers-cb"> 显示着法序号 (棋谱)</label>
+        </div>
+
+        <div class="control-section">
+            <h2>八卦图例</h2>
+            <canvas id="legend-canvas" width="260" height="360"></canvas>
+        </div>
+    </div>
+</div>
+
+<script>
+const CANVAS_SIZE = 760;        // 棋盘画布像素边长（固定）
+let BOARD_SIZE = 19;           // 可由“棋盘”下拉框切换
+const GRID_PADDING = 20;
+let GRID_SPACING = 40;
+let STONE_RADIUS = 18;
+let STAR_POINTS = [];
+
+// 根据棋盘大小计算网格间距与星位（【8 个随机卦点】规则保持不变）
+function computeGeometry() {
+    GRID_SPACING = (CANVAS_SIZE - 2 * GRID_PADDING) / (BOARD_SIZE - 1);
+    STONE_RADIUS = GRID_SPACING * 0.45;   // 棋子随棋盘路数缩放：小棋盘棋子更大
+    if (BOARD_SIZE === 9) {
+        STAR_POINTS = [[2,2],[6,2],[2,6],[6,6],[4,4]];
+    } else if (BOARD_SIZE === 13) {
+        STAR_POINTS = [[3,3],[9,3],[3,9],[9,9],[6,6]];
+    } else {
+        const e = 3, m = Math.floor(BOARD_SIZE / 2);
+        const raw = [];
+        [e, m, BOARD_SIZE - 1 - e].forEach(r =>
+            [e, m, BOARD_SIZE - 1 - e].forEach(c => raw.push([r, c]))
+        );
+        STAR_POINTS = Array.from(new Set(raw.map(p => p.join(','))))
+            .map(s => s.split(',').map(Number));
+    }
+}
+
+const Player = { NONE: 0, BLACK: 1, WHITE: 2 };
+const TrigramName = {
+    QIAN: '乾', DUI: '兑', LI: '离', ZHEN: '震',
+    XUN: '巽', KAN: '坎', GEN: '艮', KUN: '坤'
+};
+
+const TRIGRAMS = {
+    [TrigramName.QIAN]: { playable: false, diagonalChi: true, scoreMod: 1, symbol: '☰' },
+    [TrigramName.DUI]:  { playable: false, diagonalChi: true, scoreMod: -1, symbol: '☱' },
+    [TrigramName.LI]:   { playable: false, diagonalChi: false, scoreMod: 1, symbol: '☲' },
+    [TrigramName.ZHEN]: { playable: false, diagonalChi: false, scoreMod: -1, symbol: '☳' },
+    [TrigramName.XUN]:  { playable: true,  diagonalChi: true, scoreMod: 1, symbol: '☴' },
+    [TrigramName.KAN]:  { playable: true,  diagonalChi: true, scoreMod: -1, symbol: '☵' },
+    [TrigramName.GEN]:  { playable: true,  diagonalChi: false, scoreMod: 1, symbol: '☶' },
+    [TrigramName.KUN]:  { playable: true,  diagonalChi: false, scoreMod: -1, symbol: '☷' }
+};
+const TRIGRAM_ORDER = [
+    TrigramName.QIAN, TrigramName.DUI, TrigramName.LI, TrigramName.ZHEN,
+    TrigramName.XUN, TrigramName.KAN, TrigramName.GEN, TrigramName.KUN
+];
+
+// Canvas elements
+const boardCanvas = document.getElementById('board-canvas');
+const stoneCanvas = document.getElementById('stone-canvas');
+const hoverCanvas = document.getElementById('hover-canvas');
+const boardCtx = boardCanvas.getContext('2d');
+const stoneCtx = stoneCanvas.getContext('2d');
+const hoverCtx = hoverCanvas.getContext('2d');
+
+// UI elements
+const blackCapturesEl = document.getElementById('black-captures');
+const whiteCapturesEl = document.getElementById('white-captures');
+const playerBlackEl = document.getElementById('player-black');
+const playerWhiteEl = document.getElementById('player-white');
+const statusTextEl = document.getElementById('status-text');
+const passBtn = document.getElementById('pass-btn');
+const newGameBtn = document.getElementById('new-game-btn');
+const modeSelect = document.getElementById('mode-select');
+const difficultySelect = document.getElementById('difficulty-select');
+const sizeSelect = document.getElementById('size-select');
+const numbersCb = document.getElementById('numbers-cb');
+const komiSelect = document.getElementById('komi-select');
+
+// AI 配置：哪些颜色由电脑控制，以及难度
+let aiPlayers = new Set();
+let aiDifficulty = 'normal';
+const AI_RANDOM_FACTOR = { easy: 0.45, normal: 0.12, hard: 0 };
+
+// 提取绘制逻辑，供棋盘和图例共用
+function drawTrigramSymbol(ctx, cx, cy, trigram, scale = 1) {
+    ctx.save();
+    // 如果是在图例中绘制（scale < 1），可能需要调整线宽以保持清晰
+    if (scale < 1) {
+        ctx.lineWidth = 2;
+    } else {
+        ctx.lineWidth = 2;
+    }
+
+    ctx.strokeStyle = '#5a4a3b';
+    ctx.fillStyle = '#d1b790'; // 棋盘底色，用于填充虚位或空心括号
+    ctx.font = `${16 * scale}px sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    const d = GRID_SPACING * scale; // 斜线长度基准
+    const radius = STONE_RADIUS * scale; // 圆圈半径
+
+    // 1. 绘制斜向气 (通气)
+    if (trigram.diagonalChi) {
+        ctx.beginPath();
+        ctx.moveTo(cx - d, cy - d);
+        ctx.lineTo(cx + d, cy + d);
+        ctx.moveTo(cx + d, cy - d);
+        ctx.lineTo(cx - d, cy + d);
+        ctx.stroke();
+    }
+
+    // 2. 绘制虚位 (不可落子)
+    if (!trigram.playable) {
+        ctx.beginPath();
+        ctx.arc(cx, cy, radius, 0, 2 * Math.PI);
+        ctx.stroke();
+        ctx.fill(); // 填充底色，形成空心圆
+    }
+
+    // 3. 绘制炮位符号 (公/私) —— 比例保持小巧，约为一格的 0.38
+    const cannonSize = GRID_SPACING * 0.38 * scale;
+    const cannonOffset = GRID_SPACING * 0.12 * scale;
+
+    ctx.beginPath();
+    ctx.lineWidth = 5 * scale;
+    // 绘制四个角的L形
+    // 左上
+    ctx.moveTo(cx - cannonOffset, cy - cannonSize); ctx.lineTo(cx - cannonOffset, cy - cannonOffset); ctx.lineTo(cx - cannonSize, cy - cannonOffset);
+    // 右上
+    ctx.moveTo(cx + cannonOffset, cy - cannonSize); ctx.lineTo(cx + cannonOffset, cy - cannonOffset); ctx.lineTo(cx + cannonSize, cy - cannonOffset);
+    // 右下
+    ctx.moveTo(cx + cannonOffset, cy + cannonSize); ctx.lineTo(cx + cannonOffset, cy + cannonOffset); ctx.lineTo(cx + cannonSize, cy + cannonOffset);
+    // 左下
+    ctx.moveTo(cx - cannonOffset, cy + cannonSize); ctx.lineTo(cx - cannonOffset, cy + cannonOffset); ctx.lineTo(cx - cannonSize, cy + cannonOffset);
+    ctx.stroke();
+
+    // 如果是"公"（scoreMod -1），用底色重画一遍细线，形成空心效果
+    if (trigram.scoreMod === -1) {
+        ctx.strokeStyle = '#d1b790'; // 这里的颜色需与图例背景一致，或使用浅色
+        ctx.lineWidth = 3 * scale;
+        ctx.stroke();
+    }
+
+    ctx.restore();
+}
+
+// Game state
+let board; // 2D array for stone positions
+let trigramPoints; // Array of {x, y, type}
+let currentPlayer;
+let captures;
+let passCount;
+let koPoint; // {x, y} or null
+let history; // For ko rule
+let gameOver;
+let moveNumBoard; // 每个交叉点上的着法序号（0 表示无）
+let moveCount;     // 已落子手数
+let lastMove;      // {x, y} 最近一手，用于标记
+
+function coordToCanvas(c) {
+    return c * GRID_SPACING + GRID_PADDING;
+}
+
+function canvasToCoord(c) {
+    return Math.round((c - GRID_PADDING) / GRID_SPACING);
+}
+
+function initGame() {
+    BOARD_SIZE = parseInt(sizeSelect.value, 10) || 19;
+    // 按棋盘路数给出贴目默认值（可被下拉框手动覆盖）
+    komiSelect.value = String(BOARD_SIZE >= 19 ? 6.5 : (BOARD_SIZE >= 13 ? 5.5 : 4.5));
+    computeGeometry();
+    board = Array(BOARD_SIZE).fill(null).map(() => Array(BOARD_SIZE).fill(Player.NONE));
+    trigramPoints = [];
+    currentPlayer = Player.BLACK;
+    captures = { [Player.BLACK]: 0, [Player.WHITE]: 0 };
+    passCount = 0;
+    koPoint = null;
+    history = [];
+    gameOver = false;
+    moveNumBoard = Array(BOARD_SIZE).fill(null).map(() => Array(BOARD_SIZE).fill(0));
+    moveCount = 0;
+    lastMove = null;
+
+    setupMode();
+    generateTrigrams();
+    drawBoard();
+    drawStones();
+    updateUI();
+    setControlsLocked(false);
+    statusTextEl.textContent = '';
+    
+    hoverCanvas.addEventListener('mousemove', handleMouseMove);
+    hoverCanvas.addEventListener('mouseout', handleMouseOut);
+    hoverCanvas.addEventListener('click', handleBoardClick);
+
+    maybeAIPlay();
+}
+
+function generateTrigrams() {
+    const existingPoints = new Set();
+    for (const trigramName of TRIGRAM_ORDER) {
+        let x, y, key;
+        let attempts = 0;
+        do {
+            x = Math.floor(Math.random() * BOARD_SIZE);
+            y = Math.floor(Math.random() * BOARD_SIZE);
+            key = `${x},${y}`;
+            attempts++;
+        } while (existingPoints.has(key) && attempts < 100); // Prevent infinite loop
+
+        if(attempts < 100) {
+            trigramPoints.push({ x, y, name: trigramName, ...TRIGRAMS[trigramName] });
+            existingPoints.add(key);
+        }
+    }
+}
+
+function drawBoard() {
+    boardCtx.clearRect(0, 0, boardCanvas.width, boardCanvas.height);
+    boardCtx.strokeStyle = '#3a3a3a';
+    boardCtx.lineWidth = 1.5;
+
+    const startPixel = coordToCanvas(0);           // 计算起点像素 (20)
+    const endPixel = coordToCanvas(BOARD_SIZE - 1); // 计算终点像素 (740)
+    // Grid lines
+    for (let i = 0; i < BOARD_SIZE; i++) {
+        boardCtx.beginPath();
+        boardCtx.moveTo(coordToCanvas(i), startPixel);
+        boardCtx.lineTo(coordToCanvas(i), endPixel);
+        boardCtx.stroke();
+        boardCtx.beginPath();
+        boardCtx.moveTo(startPixel, coordToCanvas(i));
+        boardCtx.lineTo(endPixel, coordToCanvas(i));
+        boardCtx.stroke();
+    }
+
+    // Star points
+    boardCtx.fillStyle = '#3a3a3a';
+    STAR_POINTS.forEach(([x, y]) => {
+        boardCtx.beginPath();
+        boardCtx.arc(coordToCanvas(x), coordToCanvas(y), 5, 0, 2 * Math.PI);
+        boardCtx.fill();
+    });
+    
+    // 设置裁剪区域：限制在棋盘网格范围内 (0,0 到 720,720)
+    boardCtx.save();
+    boardCtx.beginPath();
+    boardCtx.rect(GRID_PADDING - 2, GRID_PADDING - 2, (BOARD_SIZE - 1) * GRID_SPACING + 4, (BOARD_SIZE - 1) * GRID_SPACING + 4);
+    boardCtx.clip();
+
+    trigramPoints.forEach(p => {
+        const cx = coordToCanvas(p.x);
+        const cy = coordToCanvas(p.y);
+
+        drawTrigramSymbol(boardCtx, cx, cy, p, 1);
+    });
+
+    boardCtx.restore();
+}
+
+function drawStones() {
+    stoneCtx.clearRect(0, 0, stoneCanvas.width, stoneCanvas.height);
+    for (let y = 0; y < BOARD_SIZE; y++) {
+        for (let x = 0; x < BOARD_SIZE; x++) {
+            if (board[y][x] !== Player.NONE) {
+                drawStone(stoneCtx, x, y, board[y][x]);
+                // 标记最近一手（小圆环）
+                if (lastMove && lastMove.x === x && lastMove.y === y) {
+                    const cx = coordToCanvas(x);
+                    const cy = coordToCanvas(y);
+                    stoneCtx.beginPath();
+                    stoneCtx.arc(cx, cy, STONE_RADIUS * 0.45, 0, 2 * Math.PI);
+                    stoneCtx.strokeStyle = board[y][x] === Player.BLACK ? '#ffffff' : '#000000';
+                    stoneCtx.lineWidth = 2;
+                    stoneCtx.stroke();
+                }
+            }
+        }
+    }
+}
+
+function drawStone(ctx, x, y, player, alpha = 1, decorate = true) {
+    const cx = coordToCanvas(x);
+    const cy = coordToCanvas(y);
+    ctx.beginPath();
+    ctx.arc(cx, cy, STONE_RADIUS, 0, 2 * Math.PI);
+    ctx.fillStyle = player === Player.BLACK ? `rgba(0,0,0,${alpha})` : `rgba(255,255,255,${alpha})`;
+    ctx.fill();
+    if (player === Player.WHITE) {
+        ctx.strokeStyle = `rgba(0,0,0,${alpha})`;
+        ctx.lineWidth = 1;
+        ctx.stroke();
+    }
+
+    // --- 新增：绘制棋子上的卦点特征 ---
+    // 检查当前位置是否是卦点
+    const trigram = trigramPoints.find(p => p.x === x && p.y === y);
+    if (trigram) {
+        // 1. 确定颜色：黑子用白线，白子用黑线
+        ctx.strokeStyle = player === Player.BLACK ? `rgba(255,255,255,${alpha})` : `rgba(0,0,0,${alpha})`;
+
+        // 2. 确定线宽：私有(粗)，公有(细)
+        // 参考棋盘绘制：私有 5px，公有基础 5px 镂空后约 2px 视觉效果
+        ctx.lineWidth = trigram.scoreMod === 1 ? 4 : 2;
+
+        // 3. 绘制炮位符号 (坐标逻辑复用 drawTrigramSymbol)
+        const cannonSize = GRID_SPACING * 0.38; // scale = 1
+        const cannonOffset = GRID_SPACING * 0.12;
+
+        ctx.beginPath();
+        // 四个角的L形
+        ctx.moveTo(cx - cannonOffset, cy - cannonSize); ctx.lineTo(cx - cannonOffset, cy - cannonOffset); ctx.lineTo(cx - cannonSize, cy - cannonOffset);
+        ctx.moveTo(cx + cannonOffset, cy - cannonSize); ctx.lineTo(cx + cannonOffset, cy - cannonOffset); ctx.lineTo(cx + cannonSize, cy - cannonOffset);
+        ctx.moveTo(cx + cannonOffset, cy + cannonSize); ctx.lineTo(cx + cannonOffset, cy + cannonOffset); ctx.lineTo(cx + cannonSize, cy + cannonOffset);
+        ctx.moveTo(cx - cannonOffset, cy + cannonSize); ctx.lineTo(cx - cannonOffset, cy + cannonOffset); ctx.lineTo(cx - cannonSize, cy + cannonOffset);
+
+        ctx.stroke();
+    }
+
+    // 显示着法序号（棋谱）：在棋子中心写上手数
+    if (decorate && numbersCb.checked && moveNumBoard[y][x] > 0) {
+        ctx.fillStyle = player === Player.BLACK ? '#ffffff' : '#000000';
+        ctx.font = `bold ${Math.round(STONE_RADIUS * 1.1)}px sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(moveNumBoard[y][x], cx, cy);
+    }
+}
+
+function handleMouseMove(e) {
+    if (gameOver) return;
+    const rect = hoverCanvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    const gridX = canvasToCoord(x);
+    const gridY = canvasToCoord(y);
+
+    hoverCtx.clearRect(0, 0, hoverCanvas.width, hoverCanvas.height);
+    
+    if (isValidMove(gridX, gridY, currentPlayer)) {
+        drawStone(hoverCtx, gridX, gridY, currentPlayer, 0.5, false);
+    }
+}
+
+function handleMouseOut() {
+    hoverCtx.clearRect(0, 0, hoverCanvas.width, hoverCanvas.height);
+}
+
+function handleBoardClick(e) {
+    if (gameOver) return;
+    const rect = hoverCanvas.getBoundingClientRect();
+    const x = canvasToCoord(e.clientX - rect.left);
+    const y = canvasToCoord(e.clientY - rect.top);
+
+    if (isValidMove(x, y, currentPlayer)) {
+        playMove(x, y, currentPlayer);
+    } else {
+        statusTextEl.textContent = '无效落子!';
+        setTimeout(() => statusTextEl.textContent = '', 2000);
+    }
+}
+
+function isValidMove(x, y, player) {
+    if (x < 0 || y < 0 || x >= BOARD_SIZE || y >= BOARD_SIZE) return false;
+    
+    // Check if on top of another stone
+    if (board[y][x] !== Player.NONE) return false;
+    
+    // Check if Trigram point is playable
+    const trigram = trigramPoints.find(p => p.x === x && p.y === y);
+    if (trigram && !trigram.playable) return false;
+    
+    // Ko rule check
+    if (koPoint && koPoint.x === x && koPoint.y === y) return false;
+    
+    // Suicide check
+    const tempBoard = board.map(row => [...row]);
+    tempBoard[y][x] = player;
+    
+    // If the move captures enemy stones, it's never a suicide.
+    const opponent = (player === Player.BLACK) ? Player.WHITE : Player.BLACK;
+    let capturesMade = 0;
+    getNeighbors(x, y).forEach(([nx, ny]) => {
+        if (isWithinBoard(nx, ny) && tempBoard[ny][nx] === opponent) {
+            const group = getGroup(nx, ny, tempBoard);
+            if (group.liberties.size === 0) {
+                capturesMade += group.stones.size;
+            }
+        }
+    });
+
+    if (capturesMade > 0) return true;
+
+    // If no captures, check if the placed stone's group has liberties.
+    const myGroup = getGroup(x, y, tempBoard);
+    return myGroup.liberties.size > 0;
+}
+
+function playMove(x, y, player) {
+    // 保存棋盘状态用于打劫规则的判断
+    history.push(JSON.stringify(board));
+
+    // 1. 在棋盘上落下棋子
+    board[y][x] = player;
+    moveCount++;
+    moveNumBoard[y][x] = moveCount;
+    lastMove = { x, y };
+
+    const opponent = (player === Player.BLACK) ? Player.WHITE : Player.BLACK;
+    let totalCaptures = 0;
+    const capturedGroupsInfo = []; // 用于打劫判断
+
+    // 2. 检查并提掉对手的死子 (*** 关键修改点 ***)
+    // 合并正交和斜交的所有邻居，并去重，确保每个邻居只检查一次
+    const neighborsToCheck = new Set();
+    getNeighbors(x, y).forEach(([nx, ny]) => neighborsToCheck.add(`${nx},${ny}`));
+    getDiagonalNeighbors(x, y).forEach(([nx, ny]) => neighborsToCheck.add(`${nx},${ny}`));
+
+    neighborsToCheck.forEach(key => {
+        const [nx, ny] = key.split(',').map(Number);
+
+        // 如果该邻居点在棋盘内，是对方棋子，并且尚未被处理过 (board[ny][nx] !== Player.NONE)
+        if (isWithinBoard(nx, ny) && board[ny][nx] === opponent) {
+            const group = getGroup(nx, ny, board);
+
+            if (group.liberties.size === 0) {
+                // 记录被吃的棋块信息，用于后续的打劫判断
+                capturedGroupsInfo.push(group);
+
+                group.stones.forEach(([sx, sy]) => {
+                    board[sy][sx] = Player.NONE;
+                    moveNumBoard[sy][sx] = 0;
+                    totalCaptures++;
+                });
+            }
+        }
+    });
+
+    // 3. 更新提子总数
+    if (totalCaptures > 0) {
+        captures[player] += totalCaptures;
+    }
+
+    // 4. 检查己方棋子是否因“填眼”而被反吃
+    // 这一步同样重要，防止自杀性落子（虽然isValidMove已做检查，但此处是最终裁决）
+    const myGroup = getGroup(x, y, board);
+    if (myGroup.liberties.size === 0) {
+        myGroup.stones.forEach(([sx, sy]) => {
+            board[sy][sx] = Player.NONE;
+            moveNumBoard[sy][sx] = 0;
+            captures[opponent]++; // 算入对方的提子
+        });
+    }
+
+    // 5. 打劫(Ko)规则判断
+    koPoint = null;
+    // 经典打劫场景：本次提子总共1颗，被吃的棋块也只有1颗，且落子后自己的棋块也只有1颗子和1口气
+    if (totalCaptures === 1 && capturedGroupsInfo.length === 1 && capturedGroupsInfo[0].stones.size === 1) {
+        const myGroupAfterCapture = getGroup(x, y, board);
+        if (myGroupAfterCapture.stones.size === 1 && myGroupAfterCapture.liberties.size === 1) {
+            // 被吃掉的那颗子的坐标，就是劫点
+            const [koX, koY] = [...capturedGroupsInfo[0].stones][0];
+            koPoint = { x: koX, y: koY };
+        }
+    }
+
+    // 6. 切换玩家并更新UI
+    currentPlayer = opponent;
+    passCount = 0;
+
+    drawStones();
+    updateUI();
+    if (!gameOver) {
+        statusTextEl.textContent = '';
+        setControlsLocked(true);
+    }
+    maybeAIPlay();
+}
+
+function isWithinBoard(x, y) {
+    return x >= 0 && x < BOARD_SIZE && y >= 0 && y < BOARD_SIZE;
+}
+
+function getNeighbors(x, y) {
+    return [[x, y - 1], [x, y + 1], [x - 1, y], [x + 1, y]];
+}
+
+function getDiagonalNeighbors(x, y) {
+    return [[x - 1, y - 1], [x - 1, y + 1], [x + 1, y - 1], [x + 1, y + 1]];
+}
+
+// The core logic for finding a group of stones and its liberties (FINAL VERSION)
+function getGroup(startX, startY, currentBoard) {
+    const player = currentBoard[startY][startX];
+    if (player === Player.NONE) {
+        return { stones: new Set(), liberties: new Set() };
+    }
+
+    const stones = new Set(); // "x,y"
+    const liberties = new Set(); // "x,y"
+    const toVisit = [[startX, startY]];
+    const visitedStones = new Set([`${startX},${startY}`]);
+
+    // --- 第1步: 洪水填充算法，找到棋块中的所有棋子 (*** 关键修改 ***) ---
+    // 这个算法现在能理解“斜向连接”
+    while (toVisit.length > 0) {
+        const [x, y] = toVisit.pop();
+        stones.add(`${x},${y}`);
+
+        // a) 检查正交邻居 (连接己方棋子 或 发现气)
+        getNeighbors(x, y).forEach(([nx, ny]) => {
+            if (!isWithinBoard(nx, ny)) return;
+            const neighborKey = `${nx},${ny}`;
+
+            if (currentBoard[ny][nx] === player) { // 是己方棋子
+                if (!visitedStones.has(neighborKey)) {
+                    visitedStones.add(neighborKey);
+                    toVisit.push([nx, ny]);
+                }
+            } else if (currentBoard[ny][nx] === Player.NONE) { // 是空点 (气)
+                liberties.add(neighborKey);
+            }
+        });
+
+        // b) 检查斜交邻居 (连接己方棋子 或 发现气)
+        getDiagonalNeighbors(x, y).forEach(([nx, ny]) => {
+            if (!isWithinBoard(nx, ny)) return;
+            const neighborKey = `${nx},${ny}`;
+            const trigramAtNeighbor = trigramPoints.find(p => p.x === nx && p.y === ny);
+
+            // 条件1: 斜角邻居本身就是一个“通气”卦点
+            if (trigramAtNeighbor && trigramAtNeighbor.diagonalChi) {
+                if (currentBoard[ny][nx] === player) { // 斜角卦点上是己方棋子 -> 连接
+                    if (!visitedStones.has(neighborKey)) {
+                        visitedStones.add(neighborKey);
+                        toVisit.push([nx, ny]);
+                    }
+                } else if (currentBoard[ny][nx] === Player.NONE) { // 斜角卦点是空的 -> 气
+                    liberties.add(neighborKey);
+                }
+            }
+
+            // 条件2: 当前我们检查的这个点(x,y)本身就是一个“通气”卦点
+            const trigramAtCurrent = trigramPoints.find(p => p.x === x && p.y === y);
+            if (trigramAtCurrent && trigramAtCurrent.diagonalChi) {
+                 if (currentBoard[ny][nx] === player) { // 斜角上是己方棋子 -> 连接
+                    if (!visitedStones.has(neighborKey)) {
+                        visitedStones.add(neighborKey);
+                        toVisit.push([nx, ny]);
+                    }
+                } else if (currentBoard[ny][nx] === Player.NONE) { // 斜角上是空点 -> 也是气
+                    liberties.add(neighborKey);
+                }
+            }
+        });
+    }
+    //console.log(`[最终结果] 棋块总气数: ${liberties.size} 口。`, '分别是:', Array.from(liberties));
+    //console.log("--- [getGroup] 本次计算结束 ---\n");
+
+    return {
+        stones: new Set(Array.from(stones).map(s => s.split(',').map(Number))),
+        liberties: liberties,
+    };
+}
+
+
+
+function handlePass() {
+    if (gameOver) return;
+    passCount++;
+    if (passCount >= 2) {
+        endGame();
+    } else {
+        currentPlayer = (currentPlayer === Player.BLACK) ? Player.WHITE : Player.BLACK;
+        statusTextEl.textContent = `玩家 ${currentPlayer === Player.BLACK ? '黑' : '白'} 停一手.`;
+        updateUI();
+        setControlsLocked(true);
+        maybeAIPlay();
+    }
+}
+
+function endGame() {
+    gameOver = true;
+    hoverCanvas.removeEventListener('mousemove', handleMouseMove);
+    hoverCanvas.removeEventListener('mouseout', handleMouseOut);
+    hoverCanvas.removeEventListener('click', handleBoardClick);
+    hoverCtx.clearRect(0,0,hoverCanvas.width, hoverCanvas.height);
+    statusTextEl.textContent = '对局结束，正在计分...';
+    setControlsLocked(false);
+    calculateScore();
+}
+
+function calculateScore() {
+    const territory = Array(BOARD_SIZE).fill(null).map(() => Array(BOARD_SIZE).fill(Player.NONE));
+    const visited = new Set();
+
+    for (let y = 0; y < BOARD_SIZE; y++) {
+        for (let x = 0; x < BOARD_SIZE; x++) {
+            if (board[y][x] === Player.NONE && !visited.has(`${x},${y}`)) {
+                const toVisit = [[x, y]];
+                const group = new Set([`${x},${y}`]);
+                visited.add(`${x},${y}`);
+                let owner = Player.NONE;
+                let touchesBlack = false;
+                let touchesWhite = false;
+
+                while (toVisit.length > 0) {
+                    const [cx, cy] = toVisit.pop();
+
+                    getNeighbors(cx, cy).forEach(([nx, ny]) => {
+                        if (!isWithinBoard(nx, ny)) return;
+                        const neighborKey = `${nx},${ny}`;
+                        
+                        if (board[ny][nx] === Player.NONE) {
+                            if (!visited.has(neighborKey)) {
+                                visited.add(neighborKey);
+                                group.add(neighborKey);
+                                toVisit.push([nx, ny]);
+                            }
+                        } else if (board[ny][nx] === Player.BLACK) {
+                            touchesBlack = true;
+                        } else if (board[ny][nx] === Player.WHITE) {
+                            touchesWhite = true;
+                        }
+                    });
+
+                    // --- 新增：处理八气卦点带来的“斜向漏风”问题 ---
+                    getDiagonalNeighbors(cx, cy).forEach(([nx, ny]) => {
+                        if (!isWithinBoard(nx, ny)) return;
+                        const neighborKey = `${nx},${ny}`;
+
+                        const trigramAtNeighbor = trigramPoints.find(p => p.x === nx && p.y === ny);
+                        const trigramAtCurrent = trigramPoints.find(p => p.x === cx && p.y === cy);
+
+                        // 只要相邻的两个对角点中，有任意一个是“斜向通气”的卦点，空间的边界就被打通了
+                        if ((trigramAtNeighbor && trigramAtNeighbor.diagonalChi) ||
+                            (trigramAtCurrent && trigramAtCurrent.diagonalChi)) {
+
+                            if (board[ny][nx] === Player.NONE) {
+                                if (!visited.has(neighborKey)) {
+                                    visited.add(neighborKey);
+                                    group.add(neighborKey);
+                                    toVisit.push([nx, ny]);
+                                }
+                            } else if (board[ny][nx] === Player.BLACK) {
+                                touchesBlack = true;
+                            } else if (board[ny][nx] === Player.WHITE) {
+                                touchesWhite = true;
+                            }
+                        }
+                    });
+                }
+                
+                if (touchesBlack && !touchesWhite) owner = Player.BLACK;
+                if (!touchesBlack && touchesWhite) owner = Player.WHITE;
+
+                if (owner !== Player.NONE) {
+                    group.forEach(posKey => {
+                        const [tx, ty] = posKey.split(',').map(Number);
+                        territory[ty][tx] = owner;
+                    });
+                }
+            }
+        }
+    }
+
+    let score = { [Player.BLACK]: 0, [Player.WHITE]: 0 };
+    score[Player.BLACK] += captures[Player.BLACK];
+    score[Player.WHITE] += captures[Player.WHITE];
+    
+    // Add komi for white —— 取自下拉框（开局时已按棋盘路数填入默认值）
+    const komi = parseFloat(komiSelect.value);
+    score[Player.WHITE] += komi;
+
+    for (let y = 0; y < BOARD_SIZE; y++) {
+        for (let x = 0; x < BOARD_SIZE; x++) {
+            const owner = territory[y][x];
+            if (owner !== Player.NONE) {
+                let pointValue = 1;
+                const trigram = trigramPoints.find(p => p.x === x && p.y === y);
+                if (trigram) {
+                    pointValue += trigram.scoreMod; // +1 or -1
+                }
+                score[owner] += pointValue;
+            }
+
+            // --- 新增：实体棋子踩在卦点上，直接结算加分/扣分 (如：坤卦扣分，巽卦加分) ---
+            const stoneOwner = board[y][x];
+            if (stoneOwner !== Player.NONE) {
+                const trigram = trigramPoints.find(p => p.x === x && p.y === y);
+                if (trigram) {
+                    score[stoneOwner] += trigram.scoreMod; // 占领福地+1，踩中咒地-1
+                }
+            }
+        }
+    }
+
+    drawTerritory(territory);
+    let resultText = `黑方: ${score[Player.BLACK]} | 白方: ${score[Player.WHITE]} (含 ${komi} 目贴目). `;
+    if (score[Player.BLACK] > score[Player.WHITE]) {
+        resultText += `黑方胜 ${score[Player.BLACK] - score[Player.WHITE]} 目!`;
+    } else {
+        resultText += `白方胜 ${score[Player.WHITE] - score[Player.BLACK]} 目!`;
+    }
+    statusTextEl.textContent = resultText;
+}
+
+function drawTerritory(territory) {
+    for (let y = 0; y < BOARD_SIZE; y++) {
+        for (let x = 0; x < BOARD_SIZE; x++) {
+            if (territory[y][x] !== Player.NONE) {
+                const owner = territory[y][x];
+                const cx = coordToCanvas(x);
+                const cy = coordToCanvas(y);
+                stoneCtx.fillStyle = owner === Player.BLACK ? 'rgba(0,0,0,0.5)' : 'rgba(255,255,255,0.5)';
+                stoneCtx.fillRect(cx - GRID_SPACING/2, cy - GRID_SPACING/2, GRID_SPACING, GRID_SPACING);
+            }
+        }
+    }
+}
+
+function drawLegend() {
+    const canvas = document.getElementById('legend-canvas');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    ctx.font = '14px sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle'; // 文字垂直居中，方便与符号对齐
+
+    // 设置图例绘制参数（炮位符号的绝对尺寸保持恒定，不受棋盘路数影响）
+    const startY = 25;
+    const spacingY = 40; // 每行高度
+    const startX = 10;   // 起始 X
+    // 以 19 路间距为基准，使图例符号的绝对尺寸保持一致（小棋盘不会撑爆图例）
+    const scale = 0.6 * (40 / GRID_SPACING);
+
+    TRIGRAM_ORDER.forEach((name, index) => {
+        const trigram = TRIGRAMS[name];
+        const baseY = index * spacingY + startY;
+
+        // 1. 构建属性描述文本
+        let props = [];
+        if (!trigram.playable) props.push('恒为空'); else props.push('可落子');
+        if (trigram.diagonalChi) props.push('斜角气');
+        props.push(trigram.scoreMod === 1 ? '私有' : '公有');
+
+        // 2. 绘制文字前半部分
+        // 格式：乾：恒为空，可供斜角气，私有，
+        const textPart = `${name}：${props.join('，')}，`;
+        ctx.fillStyle = '#3a3a3a';
+        ctx.fillText(textPart, startX, baseY);
+
+        // 3. 绘制符号（接在文字后面）
+        const textWidth = ctx.measureText(textPart).width;
+        const symbolX = startX + textWidth + 5; // 文字后留 5px 间距
+        drawTrigramSymbol(ctx, symbolX, baseY, trigram, scale);
+
+        // // 4. 绘制结尾括号
+        // // 符号大致宽度按 GRID_SPACING * scale (24px) 估算
+        // ctx.fillText('', symbolX + GRID_SPACING * scale + 5, baseY);
+    });
+}
+
+function updateUI() {
+    blackCapturesEl.textContent = captures[Player.BLACK];
+    whiteCapturesEl.textContent = captures[Player.WHITE];
+    
+    playerBlackEl.classList.toggle('active', currentPlayer === Player.BLACK && !gameOver);
+    playerWhiteEl.classList.toggle('active', currentPlayer === Player.WHITE && !gameOver);
+}
+
+// 开局后锁定“模式 / 棋盘 / 难度 / 贴目”等设置，避免对局中途被改动（新对局时解锁）
+function setControlsLocked(locked) {
+    modeSelect.disabled = locked;
+    sizeSelect.disabled = locked;
+    difficultySelect.disabled = locked;
+    komiSelect.disabled = locked;
+}
+
+// ============================================================
+// CPU AI：启发式评估 + 战术（吃子/逃气）优先，难度通过随机扰动调节
+// 参考经典轻量级围棋 AI 思路（贪心评估 + 局部战术），并适配八卦规则
+// ============================================================
+
+function setupMode() {
+    aiPlayers = new Set();
+    const mode = modeSelect.value;
+    if (mode === 'pve-black') aiPlayers.add(Player.WHITE);
+    else if (mode === 'pve-white') aiPlayers.add(Player.BLACK);
+    aiDifficulty = difficultySelect.value;
+}
+
+function opponentOf(p) {
+    return p === Player.BLACK ? Player.WHITE : Player.BLACK;
+}
+
+// 在棋盘副本上模拟落子并结算吃子，返回新棋盘与信息（不改动真实棋盘）
+function applyMoveSim(simBoard, x, y, player) {
+    const nb = simBoard.map(row => [...row]);
+    nb[y][x] = player;
+    const opponent = opponentOf(player);
+    let captures = 0;
+
+    const toCheck = new Set();
+    getNeighbors(x, y).forEach(([nx, ny]) => toCheck.add(`${nx},${ny}`));
+    getDiagonalNeighbors(x, y).forEach(([nx, ny]) => toCheck.add(`${nx},${ny}`));
+
+    toCheck.forEach(key => {
+        const [nx, ny] = key.split(',').map(Number);
+        if (isWithinBoard(nx, ny) && nb[ny][nx] === opponent) {
+            const g = getGroup(nx, ny, nb);
+            if (g.liberties.size === 0) {
+                g.stones.forEach(([sx, sy]) => { nb[sy][sx] = Player.NONE; captures++; });
+            }
+        }
+    });
+
+    const myGroup = getGroup(x, y, nb);
+    if (myGroup.liberties.size === 0) {
+        myGroup.stones.forEach(([sx, sy]) => { nb[sy][sx] = Player.NONE; });
+    }
+    return { board: nb, captures, myLiberties: myGroup.liberties.size };
+}
+
+// 判断该点是否是己方真眼（避免 AI 填自己的眼）
+function isOwnEye(x, y, player) {
+    const opp = opponentOf(player);
+    let orthAllOwn = true;
+    getNeighbors(x, y).forEach(([nx, ny]) => {
+        if (isWithinBoard(nx, ny)) {
+            if (board[ny][nx] !== player) orthAllOwn = false;
+        }
+    });
+    if (!orthAllOwn) return false;
+    let diagHasOpp = false;
+    getDiagonalNeighbors(x, y).forEach(([nx, ny]) => {
+        if (isWithinBoard(nx, ny) && board[ny][nx] === opp) diagHasOpp = true;
+    });
+    return !diagHasOpp;
+}
+
+// 评估单个候选点的价值
+function evaluateMove(player, x, y) {
+    const { board: nb, captures, myLiberties } = applyMoveSim(board, x, y, player);
+    let score = 0;
+
+    score += captures * 14;                       // 吃子收益（最高优先）
+    score += Math.min(myLiberties, 4) * 2;        // 落子后自身气越多越好
+    if (myLiberties === 1) score -= 6;            // 自陷打吃惩罚
+    if (myLiberties === 0) score -= 1000;         // 自杀（已被 isValidMove 拦截）
+
+    const opp = opponentOf(player);
+
+    // 进攻：落子后让对方棋块进入打吃（仅 1 气）
+    const oppSeen = new Set();
+    getNeighbors(x, y).concat(getDiagonalNeighbors(x, y)).forEach(([nx, ny]) => {
+        if (isWithinBoard(nx, ny) && nb[ny][nx] === opp) {
+            const key = nx + ',' + ny;
+            if (!oppSeen.has(key)) {
+                const g = getGroup(nx, ny, nb);
+                g.stones.forEach(s => oppSeen.add(s[0] + ',' + s[1]));
+                if (g.liberties.size === 1) score += 6;
+            }
+        }
+    });
+
+    // 防守：解救自己处于打吃（落子前仅 1 气）的棋块
+    let savedSelf = false;
+    const selfSeen = new Set();
+    getNeighbors(x, y).concat(getDiagonalNeighbors(x, y)).forEach(([nx, ny]) => {
+        if (isWithinBoard(nx, ny) && board[ny][nx] === player && !selfSeen.has(nx + ',' + ny)) {
+            const g = getGroup(nx, ny, board);
+            g.stones.forEach(s => selfSeen.add(s[0] + ',' + s[1]));
+            if (g.liberties.size === 1) savedSelf = true;
+        }
+    });
+    if (savedSelf && myLiberties > 1) score += 8;
+
+    // 接触已有棋子（避免开局到处乱跑）
+    let adjacent = false;
+    getNeighbors(x, y).concat(getDiagonalNeighbors(x, y)).forEach(([nx, ny]) => {
+        if (isWithinBoard(nx, ny) && board[ny][nx] !== Player.NONE) adjacent = true;
+    });
+    if (adjacent) score += 1;
+
+    // 不要执着于卦点：除非能吃子，否则轻微惩罚落在任意卦点（避免总往带 X 标记的点上堆）
+    const trigram = trigramPoints.find(p => p.x === x && p.y === y);
+    if (trigram && captures === 0) score -= 3;
+
+    if (isOwnEye(x, y, player)) score -= 1000;    // 不填自己的眼
+
+    score += Math.random() * 0.6;                 // 轻微随机，避免完全固定
+    return score;
+}
+
+// 选择 AI 落子点；返回 {x,y} 或 null（表示停一手）
+function aiChooseMove(player) {
+    const candidates = [];
+    for (let y = 0; y < BOARD_SIZE; y++) {
+        for (let x = 0; x < BOARD_SIZE; x++) {
+            if (board[y][x] !== Player.NONE) continue;
+            if (!isValidMove(x, y, player)) continue;
+            candidates.push({ x, y, score: evaluateMove(player, x, y) });
+        }
+    }
+    if (candidates.length === 0) return null;
+
+    candidates.sort((a, b) => b.score - a.score);
+    const best = candidates[0];
+
+    // 当对手已停一手且最佳着法无收益时，停一手结束对局
+    if (passCount >= 1 && best.score <= 0) return null;
+
+    // 难度：以一定概率改走随机合法着法，制造不同强度
+    const rf = AI_RANDOM_FACTOR[aiDifficulty] ?? 0;
+    if (rf > 0 && Math.random() < rf) {
+        return candidates[Math.floor(Math.random() * candidates.length)];
+    }
+    return { x: best.x, y: best.y };
+}
+
+// 轮到 AI 时自动落子
+function maybeAIPlay() {
+    if (gameOver) return;
+    if (!aiPlayers.has(currentPlayer)) return;
+    statusTextEl.textContent = `电脑(${currentPlayer === Player.BLACK ? '黑' : '白'})思考中...`;
+    setTimeout(() => {
+        if (gameOver || !aiPlayers.has(currentPlayer)) return;
+        const move = aiChooseMove(currentPlayer);
+        if (move) {
+            playMove(move.x, move.y, currentPlayer);
+        } else {
+            handlePass();
+        }
+    }, 400);
+}
+
+// Event Listeners
+passBtn.addEventListener('click', handlePass);
+newGameBtn.addEventListener('click', initGame);
+sizeSelect.addEventListener('change', initGame);
+modeSelect.addEventListener('change', initGame);
+numbersCb.addEventListener('change', drawStones);
+difficultySelect.addEventListener('change', () => { aiDifficulty = difficultySelect.value; });
+
+// Start the game
+initGame();
+
+drawLegend();
+
+// --- 新增的调试函数 ---
+function checkGroupAt(x, y) {
+    // 使用 CSS 来让输出更醒目
+    console.log(`%c--- 手动检查坐标 (${x}, ${y}) ---`, 'color: blue; font-weight: bold; font-size: 14px;');
+
+    if (!isWithinBoard(x, y)) {
+        console.error(`错误: 坐标 (${x}, ${y}) 超出棋盘范围 (0-18)。`);
+        return;
+    }
+
+    if (board[y][x] === Player.NONE) {
+        console.warn(`提示: 坐标 (${x}, ${y}) 是一个空点，没有棋块可以检查。`);
+        return;
+    }
+
+    // 直接调用我们之前那个带有详细日志的 getGroup 函数
+    // 它会把所有的计算过程都打印出来
+    getGroup(x, y, board);
+}
+
+// 将这个函数暴露到全局，这样就可以在控制台里直接调用了
+window.checkGroup = checkGroupAt;
+
+</script>
+
+</body>
+</html>
